@@ -1,6 +1,6 @@
 from pymysql import connect, Connection
 from pymysql.cursors import DictCursor
-
+import os
 
 class Database:
     def __init__(self,
@@ -102,12 +102,13 @@ class Database:
 
 
 
+
 db = Database(
-    db_name="n82_bot2",
-    db_user="root",
-    db_password="0109",
-    db_host="localhost",
-    db_port=3306
+    db_name=os.getenv("DB_NAME", "n82_bot2"),
+    db_user=os.getenv("DB_USER", "root"),
+    db_password=os.getenv("DB_PASSWORD", "0109"),
+    db_host=os.getenv("DB_HOST", "localhost"),
+    db_port=int(os.getenv("DB_PORT", 3306))
 )
 
 

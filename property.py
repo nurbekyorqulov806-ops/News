@@ -183,7 +183,7 @@ async def cost(message: Message, state: FSMContext):
     inline_markup.button(text="Saqlab qo'yilsin",callback_data="save_to_db2")
 
     await message.answer(text="Malumotlarni saqlab qo'ymoqchimisiz?",reply_markup=inline_markup.as_markup())
-    await message.answer("✅ Saqlandi")
+
 
 
 
