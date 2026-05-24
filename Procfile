@@ -1,1 +1,1 @@
-bot:python property.py
+worker:python property.py

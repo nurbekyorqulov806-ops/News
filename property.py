@@ -1,7 +1,7 @@
 from asyncio import run
 
 from pymysql import IntegrityError
-from aiogram import Bot, Dispatcher
+from aiogram import Bot, Dispatcher,F
 from aiogram.types import Message, CallbackQuery,ReplyKeyboardMarkup,KeyboardButton
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State,StatesGroup
@@ -12,6 +12,9 @@ from db2 import db
 
 
 TOKEN="8622559912:AAE6QTGQCkIkShTnwBd3-XlLdrIy7piiaEQ"
+KANAL_ID="@uy_bozori_nurbek_bot"
+
+
 
 bot=Bot(token=TOKEN)
 dp=Dispatcher()
@@ -47,7 +50,11 @@ add_datas_keyboard=ReplyKeyboardMarkup(
     resize_keyboard=True
 )
 
-
+back_keyboard=ReplyKeyboardMarkup(
+    keyboard=[
+        [KeyboardButton(text="⬅️ Orqaga")]
+        ],
+        resize_keyboard=True)
 
 
 
@@ -121,7 +128,8 @@ async def delete_account(message: Message):
     user_id= message.from_user.id
     db.delete_user(user_id=user_id)
     await message.answer(
-        text="Akkauntingiz ma'lumotlari muvaffaqiyatli o'chirildi"
+        text="Akkauntingiz ma'lumotlari muvaffaqiyatli o'chirildi",
+        reply_markup=keyboard
     )
 
 
@@ -129,19 +137,53 @@ async def delete_account(message: Message):
 
 
 
+# ================= FSM GLOBAL BACK BUTTON (SRAZI YOKI BITTA-BITTA) =================
+@dp.message(F.text == "⬅️ Orqaga")
+async def back_handler(message: Message, state: FSMContext):
+    current_state = await state.get_state()
+
+    # Agar FSM jarayonidan tashqarida bo'lsa, shunchaki menyuni chiqaradi
+    if current_state is None:
+        await message.answer("Asosiy menyu:", reply_markup=keyboard)
+        return
+
+    # SIZ XOOHLAGAN ASOSIY MANTIQ SHU YERDA:
+    # Agar foydalanuvchi hamma narsani to'ldirib, inline tugma turgan qadamda "Orqaga"ni bossa:
+    if current_state == UserState.waiting_for_cost.state:
+        await state.clear() # Xotirani o'chiramiz, bazaga saqlanmaydi!
+        await message.answer("❌ To'ldirish bekor qilindi.", reply_markup=keyboard)
+        return
+
+    # Agar jarayonning yarimlarida (boshqa statelarda) bo'lsa, bittadan orqaga qaytadi:
+    if current_state == UserState.waiting_for_address.state:
+        await state.clear()
+        await message.answer("To'ldirish bekor qilindi. Asosiy menyu:", reply_markup=keyboard)
+
+    elif current_state == UserState.waiting_for_choise1.state:
+        await message.answer("Manzilni qayta kiriting:", reply_markup=back_keyboard)
+        await state.set_state(UserState.waiting_for_address)
+
+    elif current_state == UserState.waiting_for_rooms.state:
+        await message.answer("Kvartira/Hovli? (Qayta tanlang):", reply_markup=back_keyboard)
+        await state.set_state(UserState.waiting_for_choise1)
+
+    elif current_state == UserState.waiting_for_choise2.state:
+        await message.answer("Xonalar sonini qayta kiriting:", reply_markup=back_keyboard)
+        await state.set_state(UserState.waiting_for_rooms)
+
 
 
 # ================= START FORM =================
 @dp.message(lambda message: message.text == "/Ma'lumotlarni to'ldirish")
 async def start_form(message: Message, state: FSMContext):
-    await message.answer("Manzilni kiriting:")
+    await message.answer("Manzilni kiriting:",reply_markup=back_keyboard)
     await state.set_state(UserState.waiting_for_address)
 
 # ================= ADDRESS =================
 @dp.message(UserState.waiting_for_address)
 async def address(message: Message, state: FSMContext):
     await state.update_data(address=message.text)
-    await message.answer("Kvartira/Hovli?")
+    await message.answer("Kvartira/Hovli?",reply_markup=back_keyboard)
     await state.set_state(UserState.waiting_for_choise1)
 
 
@@ -149,7 +191,7 @@ async def address(message: Message, state: FSMContext):
 @dp.message(UserState.waiting_for_choise1)
 async def choise1(message: Message, state: FSMContext):
     await state.update_data(choise1=message.text)
-    await message.answer("Xonalar soni?")
+    await message.answer("Xonalar soni?",reply_markup=back_keyboard)
     await state.set_state(UserState.waiting_for_rooms)
 
 
@@ -157,7 +199,7 @@ async def choise1(message: Message, state: FSMContext):
 @dp.message(UserState.waiting_for_rooms)
 async def rooms(message: Message, state: FSMContext):
     await state.update_data(rooms=message.text)
-    await message.answer("Sotuv/Ijara?")
+    await message.answer("Sotuv/Ijara?",reply_markup=back_keyboard)
     await state.set_state(UserState.waiting_for_choise2)
 
 
@@ -165,7 +207,7 @@ async def rooms(message: Message, state: FSMContext):
 @dp.message(UserState.waiting_for_choise2)
 async def choise2(message: Message, state: FSMContext):
     await state.update_data(choise2=message.text)
-    await message.answer("Narx?")
+    await message.answer("Narx?",reply_markup=back_keyboard)
     await state.set_state(UserState.waiting_for_cost)
 
 
@@ -181,8 +223,9 @@ async def cost(message: Message, state: FSMContext):
 
     inline_markup=InlineKeyboardBuilder()
     inline_markup.button(text="Saqlab qo'yilsin",callback_data="save_to_db2")
+    inline_markup.button(text="Kanalga joylash",callback_data="post_to_channel")
 
-    await message.answer(text="Malumotlarni saqlab qo'ymoqchimisiz?",reply_markup=inline_markup.as_markup())
+    await message.answer(text="Malumotlarni nima qilmoqchimisiz?",reply_markup=inline_markup.as_markup())
 
 
 
@@ -204,6 +247,7 @@ async def save_data_callback(call:CallbackQuery,state:FSMContext):
 
     if not data:
         await call.message.answer("❗Ma'lumot topilmadi")
+        await state.clear()
         return
 
     db.add_datas1(
@@ -225,8 +269,52 @@ async def save_data_callback(call:CallbackQuery,state:FSMContext):
 
 
 
+@dp.callback_query(lambda call:call.data=="post_to_channel")
+async def post_to_channel_callback(call:CallbackQuery,state:FSMContext):
+    data=await state.get_data()
 
-@dp.message()
+    if not data:
+        await call.message.answer("Ma'lumot topilmadi")
+        await state.clear()
+        return
+    
+    try:
+        db.add_datas1(user_id=call.from_user.id,address=data["address"],choise1=data["choise1"],rooms=data["rooms"],choise2=data["choise2"],cost=data["cost"])
+
+        # 2. Kanalga ketadigan chiroyli matn shabloni
+        post_text = (
+            f"🔥 Yangi El'on!\n\n"
+            f"🗺 Manzil: {data['address']}\n"
+            f"🏠 Turi: {data['choise1']}\n"
+            f"🏙 Xonalar soni: {data['rooms']}\n"
+            f"📋 Holati: {data['choise2']}\n"
+            f"💲 Narxi: {data['cost']}\n\n"
+            f"👤 Yuboruvchi: {call.from_user.full_name}"
+        )
+
+        # 3. Kanalga xabarni jo'natish (bot kanal admini bo'lishi shart)
+        await bot.send_message(chat_id=KANAL_ID, text=post_text, parse_mode="Markdown")
+        
+        await call.message.answer(text="✅ Ma'lumotlar muvaffaqiyatli saqlandi va Kanalga joylandi!", reply_markup=keyboard)
+        
+    except Exception as e:
+        # Agar kanalga yuborishda xato bo'lsa (masalan bot admin qilinmagan bo'lsa) xato chiqadi
+        await call.message.answer(
+            text=f"❌ Xatolik yuz berdi!\n"
+                 f"Sababi: Botingiz kanalga admin qilinmagan yoki kanal username xato.\n"
+                 f"Tizim xatosi: {str(e)}", 
+            reply_markup=keyboard
+        )
+
+    await call.message.edit_reply_markup(reply_markup=None)
+    await state.clear() # FSMni mutloq tozalaymiz, cheksizlik bo'lmaydi
+    await call.answer()
+
+
+
+
+
+@dp.message(StateFilter(None))
 async def handler(message:Message,state: FSMContext):
 
     if message.text=="Uy manzili":
@@ -265,6 +353,7 @@ async def main():
     db.create_address_table()
     await dp.start_polling(bot)
 
-run( main() )
+if __name__=="__main__":
+    run( main() )
 
 
